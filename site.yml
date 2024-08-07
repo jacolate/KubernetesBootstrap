@@ -1,32 +1,85 @@
 ---
-
-- name: Prepare k3s nodes
-  hosts: k3s_cluster
+- name: Prepare nodes for installation process
+  hosts: cluster
   gather_facts: true
-  environment: "{{ proxy_env | default({}) }}"
   roles:
     - role: pre
       become: true
     - role: download
       become: true
 
-- name: Setup k3s servers
+- name: Setup master nodes
   hosts: master
-  environment: "{{ proxy_env | default({}) }}"
   roles:
-    - role: k3s_server
+    - role: k8s-server
       become: true
+      when: distribution == "k8s"
+    - role: k3s-server
+      become: true
+      when: distribution == "k3s"
 
-- name: Setup k3s agents
+- name: Setup worker nodes
   hosts: node
-  environment: "{{ proxy_env | default({}) }}"
   roles:
-    - role: k3s_agent
+    - role: k8s-agent
       become: true
+      when: distribution == "k8s"
+    - role: k3s-agent
+      become: true
+      when: distribution == "k3s"
 
-- name: Configure kube-vip-cp
+- name: Install CNI
   hosts: master
-  environment: "{{ proxy_env | default({}) }}"
   roles:
+    - role: cilium
+      become: true
+      when: cni == "cilium"
+    - role: calico
+      become: true
+      when: cni == "calico"
+    - role: flannel
+      become: true
+      when: cni == "flannel"
+
+- name: Install Control Plane load balancing
+  hosts: master
+  roles:
+    - role: kube-vip
+      become: true
+      when: ha == "kube-vip"
+
+- name: Install service load balancing
+  hosts: master
+  roles:
+    - role: metallb
+      become: true
+      when: lb == "metallb"
     - role: kube-vip-cp
       become: true
+      when: lb == "kube-vip"
+    - role: purelb
+      become: true
+      when: lb == "purelb"
+
+- name: Install ingress controller
+  hosts: master
+  roles:
+    - role: traefik
+      become: true
+      when: ingress == "traefik"
+    - role: nginx-ingress
+      become: true
+      when: ingress == "nginx-ingress"
+    - role: haproxy-ingress
+      become: true
+      when: ingress == "haproxy"
+
+- name: Install storage tooling
+  hosts: master
+  roles:
+    - role: longhorn
+      become: true
+      when: storage == "longhorn"
+    - role: ceph-rook
+      become: true
+      when: storage == "rook"
