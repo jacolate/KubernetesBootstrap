@@ -1,0 +1,44 @@
+---
+- name: Prepare traefik and deploy it on the first master
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+  run_once: true
+  block:
+  - name: Create manifests directory on first master
+    file:
+      path: "{{ manifest_path }}/"
+      state: directory
+      owner: root
+      group: root
+      mode: "0644"
+
+  - name: "Copy to first master: crds for traefik"
+    copy:
+      src: "resources/traefik-00-crd.yml"
+      dest: "{{ manifest_path }}/00-traefik-crd.yaml"
+      owner: root
+      group: root
+      mode: "0644"
+
+  - name: "Copy to first master: rbac for traefik"
+    copy:
+      src: "resources/traefik-01-rbac.yml"
+      dest: "{{ manifest_path }}/01-traefik-rbac.yaml"
+      owner: root
+      group: root
+      mode: "0644"
+
+  - name: "Copy to first master: svc for traefik"
+    copy:
+      src: "resources/traefik-02-svc.yml"
+      dest: "{{ manifest_path }}/02-traefik-svc.yaml"
+      owner: root
+      group: root
+      mode: "0644"
+
+  - name: "Copy to first master: deployment for traefik"
+    copy:
+      src: "resources/traefik-03-deploy.yml"
+      dest: "{{ manifest_path }}/03-deploy.yaml"
+      owner: root
+      group: root
+      mode: "0644"

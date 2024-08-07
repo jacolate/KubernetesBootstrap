@@ -1,0 +1,3 @@
+---
+- name: Deploy kube-vip manifest
+  include_tasks: kube-vip.yml

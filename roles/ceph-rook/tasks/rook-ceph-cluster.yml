@@ -1,0 +1,51 @@
+---
+- name: Download and prepare rook toolbox
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+  run_once: true
+  block:
+    - name: Create manifests directory on first master
+      file:
+        path: "/tmp/{{ distribution }}/rook"
+        state: directory
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: "Download to first master: manifests for the ceph cluster"
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/rook/rook/release-1.14/deploy/examples/cluster.yaml"
+        dest: "/tmp/{{ distribution }}/rook/rook-ceph-cluster.yml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Deploy storage cluster config for rook/ceph
+      command: >-
+        {{ kubectl_prefix }} kubectl create -f /tmp/{{ distribution }}/rook/rook-ceph-cluster.yml
+      register: create_cr
+      changed_when: "'created' in create_cr.stdout"
+      failed_when: "'Error' in create_cr.stderr and 'already exists' not in create_cr.stderr"
+      when: default_cluster
+
+    - name: "Download to first master: rook toolbox"
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/rook/rook/release-1.14/deploy/examples/toolbox.yaml"
+        dest: "/tmp/{{ distribution }}/rook/rook-ceph-toolbox.yml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Deploy toolbox for rook/ceph
+      command: >-
+        {{ kubectl_prefix }} kubectl create -f /tmp/{{ distribution }}/rook/rook-ceph-toolbox.yml
+      register: create_cr
+      changed_when: "'created' in create_cr.stdout"
+      failed_when: "'Error' in create_cr.stderr and 'already exists' not in create_cr.stderr"
+
+    - name: Wait for rook toolbox pod to be in Running state
+      command: >-
+        {{ kubectl_prefix }} kubectl wait --for=condition=ready pod -l app=rook-ceph-tools
+        --namespace=rook-ceph
+        --timeout={{ rook_available_timeout | default('300s') }}
+      changed_when: false
+      retries: 5

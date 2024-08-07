@@ -1,0 +1,5 @@
+---
+# Name of the master group
+group_name_master: master
+set_fact:
+  ingress_controller: "haproxy"

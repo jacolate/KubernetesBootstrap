@@ -1,0 +1,6 @@
+---
+- name: Join master nodes to the cluster
+  command: "{{ hostvars[groups['master'][0]].control_plane_join_command }}"
+  register: join_result
+  changed_when: true
+  when: ansible_hostname != hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']

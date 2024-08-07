@@ -1,0 +1,6 @@
+---
+# Timeout to wait for kube-vip services to come up
+metallb_available_timeout: 120s
+
+# Name of the master group
+group_name_master: master

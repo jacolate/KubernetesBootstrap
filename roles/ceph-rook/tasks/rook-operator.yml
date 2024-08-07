@@ -1,0 +1,51 @@
+---
+- name: Download and prepare rook rook operator
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+  run_once: true
+  block:
+    - name: Create manifests directory on first master
+      file:
+        path: "/tmp/{{ distribution }}/rook/crds"
+        state: directory
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: "Download to first master: crds for rook/ceph"
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/rook/rook/release-1.14/deploy/examples/crds.yaml"
+        dest: "/tmp/{{ distribution }}/rook/crds/rook-ceph-crds.yml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: "Download to first master: common for rook/ceph"
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/rook/rook/release-1.14/deploy/examples/common.yaml"
+        dest: "/tmp/{{ distribution }}/rook/crds/rook-ceph-common.yml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: "Download to first master: rook operator"
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/rook/rook/release-1.14/deploy/examples/operator.yaml"
+        dest: "/tmp/{{ distribution }}/rook/crds/rook-ceph-operator.yml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Deploy CRDS, common and operator for rook/ceph
+      command: >-
+        {{ kubectl_prefix }} kubectl create -f /tmp/{{ distribution }}/rook/crds/
+      register: create_cr
+      changed_when: "'created' in create_cr.stdout"
+      failed_when: "'Error' in create_cr.stderr and 'already exists' not in create_cr.stderr"
+
+    - name: Wait for rook operator pods to be in Running state
+      command: >-
+        {{ kubectl_prefix }} kubectl wait --for=condition=ready pod -l app=rook-ceph-operator
+        --namespace=rook-ceph
+        --timeout={{ rook_available_timeout | default('300s') }}
+      changed_when: false
+      retries: 5

@@ -1,0 +1,53 @@
+- name: Prepare purelb and deploy it to the first master
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+  run_once: true
+  block:
+
+  - name: Create manifests directory for temp configuration
+    file:
+      path: /tmp/purelb
+      state: directory
+      owner: "{{ ansible_user_id }}"
+      mode: "0755"
+
+  - name: Create namespace for purelb
+    command: >-
+      {{ kubectl_prefix }} kubectl create namespace purelb
+    changed_when: false
+
+  - name: Copy purelb CRDs manifest to first master
+    template:
+      src: "purelb-manifest.j2"
+      dest: "{{ manifest_path }}/purelb-crds.yml"
+      owner: "{{ ansible_user_id }}"
+      mode: "0755"
+
+  - name: Copy purelb CRs manifest to first master
+    template:
+      src: "purelb-l2.j2"
+      dest: "/tmp/purelb/purelb-l2.yml"
+      owner: "{{ ansible_user_id }}"
+      mode: "0755"
+
+  - name: Wait for purelb pods to be in Running state
+    command: >-
+      {{ kubectl_prefix }} kubectl wait --for=condition=ready pod -l app=purelb
+      --namespace=purelb
+      --timeout={{ purelb_available_timeout | default('300s') }}
+    changed_when: false
+    retries: 5
+
+  - name: Apply purelb CRs if not already applied
+    command: >-
+      {{ kubectl_prefix }} kubectl apply -f /tmp/purelb/purelb-l2.yml
+      --timeout='{{ metallb_available_timeout }}'
+    register: this
+    changed_when: false
+    until: this.rc == 0
+    retries: 5
+
+  - name: Remove tmp directory used for manifests
+    file:
+      path: /tmp/purelb
+      state: absent
+

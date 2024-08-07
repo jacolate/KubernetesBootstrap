@@ -1,0 +1,44 @@
+---
+- name: Prepare nginx-ingress and deploy it to the first master
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+  run_once: true
+  block:
+  - name: Create manifests directory on first master
+    file:
+      path: "{{ manifest_path }}/"
+      state: directory
+      owner: root
+      group: root
+      mode: "0644"
+
+  - name: "Download to first master: manifest for nginx-ingress"
+    ansible.builtin.get_url:
+      url: "https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-{{ nginx_ingress_version }}/deploy/static/provider/baremetal/deploy.yaml"
+      dest: "{{ manifest_path }}/nginx-ingress-manifest.yml"
+      owner: root
+      group: root
+      mode: "0644"
+
+  - name: "Modify nginx-ingress manifest to use Type: LoadBalancer"
+    replace:
+      path: "{{ manifest_path }}/nginx-ingress-manifest.yml"
+      regexp: '^( *type: *)(NodePort)(.*)$'
+      replace: '\1LoadBalancer\3'
+
+  - name: Wait for ingress-nginx pods to be in Running state
+    command: >-
+      {{ kubectl_prefix }} kubectl wait --for=condition=ready pod -l app.kubernetes.io/component=controller
+      --namespace=ingress-nginx
+      --timeout={{ ingress_nginx_available_timeout | default('300s') }}
+    changed_when: false
+    retries: 5
+
+  - name: Scale deployment ingress-nginx controller up to 2 replicas
+    command: >-
+      {{ kubectl_prefix }} kubectl scale deployment --namespace ingress-nginx ingress-nginx-controller --replicas=2  
+    changed_when: false
+
+  - name: Add annotation for ingressclass
+    command: >-
+      {{ kubectl_prefix }} kubectl -n ingress-nginx annotate ingressclasses nginx ingressclass.kubernetes.io/is-default-class="true"
+    changed_when: false

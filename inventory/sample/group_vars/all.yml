@@ -1,0 +1,112 @@
+---
+#
+################# Config #######################
+# Option can be leaved empty if the tool is not needed
+# (k8s, k3s)
+distribution: k3s
+# (cilium, flannel, calico)
+cni: cilium
+# (kube-vip)
+ha: kube-vip
+# (metallb, purelb, kube-vip, cilium)
+lb: purelb
+# (nginx-ingress, traefik, haproxy)
+ingress: traefik
+# (rook, longhorn)
+storage:
+#################################################
+
+################# k3s ###########################
+k3s_version: v1.28.3+k3s2
+k3s_token: "your-safe-passord"
+################# General #######################
+# this is the user that has ssh access to these machines
+ansible_user: "your-username"
+ansible_become_password: "your-password"
+ansible_port: "your-ssh-port"
+# this is the ip address of the machine that will have access to the kube-api-server (ufw rule)
+host_ip: "you-ip-address"
+systemd_dir: /etc/systemd/system
+system_timezone: "Your/Timezone"
+# these two options heavily depend on the network configuration of your machines
+internal_network: "10.0.17.0/24"
+internal_network_NAT: "192.168.114.0/24"
+#################################################
+
+################# CNI general ###################
+cluster_cidr: "10.52.0.0/16"
+#################################################
+
+################# cilium ########################
+cilium_iface: "eth0"
+cilium_mode: "native"        # native when nodes on same subnet or using bgp, else set routed
+cilium_tag: "v1.15.2"        # cilium version tag
+cilium_hubble: true          # enable hubble observability relay and ui
+cilium_bgp: false
+cilium_arp: true
+#################################################
+
+################# flannel #######################
+# interface which will be used for flannel
+flannel_iface: "eth0"
+#################################################
+
+################# Calico ########################
+# uncomment calico_iface to use tigera operator/calico cni instead of flannel https://docs.tigera.io/calico/latest/about
+calico_iface: "eth0"
+calico_ebpf: true           # use eBPF dataplane instead of iptables
+calico_tag: "v3.27.2"        # calico version tag
+##################################################
+
+################# nginx-ingress #################
+nginx_ingress_version: v1.10.0
+#################################################
+
+################ metalLB ########################
+metallb_controller_tag_version: "v0.14.5"
+metallb_type: "native"       # layer2 or bgp
+# this is the range of ip addresses that will be used by the load balancer
+metallb_address_range: "192.168.114.11-192.168.114.12"
+#################################################
+
+################# ceph/ROOK #####################
+# Should there be a default storage cluster deployed?
+default_cluster: true
+#################################################
+
+################# longhorn ######################
+# Credentials for longhorn dashboard
+longhorn_username: "your username"
+longhorn_password: "your password"
+#################################################
+
+################# kube-vip ######################
+# apiserver_endpoint is virtual ip-address which will be configured on each master
+apiserver_endpoint: "192.168.114.10"
+api2: "141.13.5.208"
+kube_vip_interface: "eth1"
+kube_vip_subnet: "/24"
+kube_vip_tag_version: "v0.6.3"
+# this is the range of ip addresses that will be used by the load balancer
+# append your subnet to the range
+kube_vip_lb_adress_range: "192.168.114.11/24-192.168.114.12/24"
+#################################################
+
+
+################# leave like it is ##############
+k3s_node_ip: '{{ ansible_facts[flannel_iface]["ipv4"]["address"] }}'
+
+k3s_master_taint: "{{ true if groups['node'] | default([]) | length >= 1 else false }}"
+extra_args: >-
+  --flannel-iface={{ flannel_iface }}
+  --node-ip={{ k3s_node_ip }}
+extra_server_args: >-
+  {{ extra_args }}
+  {{ '--node-taint node-role.kubernetes.io/master=true:NoSchedule' if k3s_master_taint else '' }}
+  --tls-san {{ api2 }},{{ apiserver_endpoint }}
+  --cluster-cidr={{ cluster_cidr | default('10.52.0.0/16') }}
+  --disable servicelb
+  --flannel-backend none
+  --disable=traefik
+extra_agent_args: >-
+  {{ extra_args }}

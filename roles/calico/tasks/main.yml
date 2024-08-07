@@ -1,0 +1,89 @@
+---
+- name: Download and prepare Calico manifests for deploying it on the cluster
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+  run_once: true
+  block:
+    - name: "Download to first master: manifest for Tigera Operator and Calico CRDs"
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/projectcalico/calico/{{ calico_tag }}/manifests/tigera-operator.yaml"
+        dest: "/tmp/{{ distribution }}/tigera-operator.yaml"
+        owner: root
+        group: root
+        mode: "0755"
+      run_once: true
+
+    - name: Deploy Tigera Operator
+      command: >-
+        {{ kubectl_prefix }} kubectl create -f /tmp/{{ distribution }}/tigera-operator.yaml
+      register: this
+      changed_when: false
+      until: this.rc == 0
+      retries: 5
+
+    - name: Wait for Tigera Operator resources
+      command: >-
+        {{ kubectl_prefix }} kubectl wait {{ item.type }}/{{ item.name }}
+        --namespace='tigera-operator'
+        --for=condition=Available=True
+        --timeout=30s
+      register: tigera_result
+      changed_when: false
+      until: tigera_result is succeeded
+      retries: 7
+      delay: 7
+      with_items:
+        - {name: tigera-operator, type: deployment}
+      loop_control:
+        label: "{{ item.type }}/{{ item.name }}"
+
+    - name: Copy Calico custom resources manifest to first master
+      ansible.builtin.template:
+        src: "calico.crs.j2"
+        dest: "/tmp/{{ distribution }}/calico-crs.yaml"
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Deploy custom resources for Calico
+      command: >-
+        {{ kubectl_prefix }} kubectl create -f /tmp/{{ distribution }}/calico-crs.yaml
+      register: create_cr
+      changed_when: "'created' in create_cr.stdout"
+      failed_when: "'Error' in create_cr.stderr and 'already exists' not in create_cr.stderr"
+
+    - name: Wait for Calico system resources to be available
+      command: >-
+        {% if item.type == 'daemonset' %}
+        {{ kubectl_prefix }} kubectl wait pods
+        --namespace='{{ item.namespace }}'
+        --selector={{ item.selector }}
+        --for=condition=Ready
+        {% else %}
+        {{ kubectl_prefix }} kubectl wait {{ item.type }}/{{ item.name }}
+        --namespace='{{ item.namespace }}'
+        --for=condition=Available
+        {% endif %}
+        --timeout=30s
+      register: cr_result
+      changed_when: false
+      until: cr_result is succeeded
+      retries: 30
+      delay: 7
+      with_items:
+        - {name: calico-typha, type: deployment, namespace: calico-system}
+        - {name: calico-kube-controllers, type: deployment, namespace: calico-system}
+        - {name: csi-node-driver, type: daemonset, selector: 'k8s-app=csi-node-driver', namespace: calico-system}
+        - {name: calico-node, type: daemonset, selector: 'k8s-app=calico-node', namespace: calico-system}
+        - {name: calico-apiserver, type: deployment, namespace: calico-apiserver}
+      loop_control:
+        label: "{{ item.type }}/{{ item.name }}"
+
+    - name: Patch Felix configuration for eBPF mode
+      ansible.builtin.command:
+        cmd: >
+          {{ kubectl_prefix }} kubectl patch felixconfiguration default
+          --type='merge'
+          --patch='{"spec": {"bpfKubeProxyIptablesCleanupEnabled": false}}'
+      register: patch_result
+      changed_when: "'felixconfiguration.projectcalico.org/default patched' in patch_result.stdout"
+      failed_when: "'Error' in patch_result.stderr"

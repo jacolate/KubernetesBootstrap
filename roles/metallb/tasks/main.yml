@@ -1,0 +1,11 @@
+---
+- name: Download and deploy metalLB
+  include_tasks: metallb-crds.yml
+
+- name: Configure metalLB
+  include_tasks: metallb-cr.yml
+
+- name: Remove tmp directory used for manifests
+  file:
+    path: /tmp/metallb
+    state: absent

@@ -1,0 +1,5 @@
+---
+# Name of the master group
+group_name_master: master
+
+purelb_available_timeout: 120s

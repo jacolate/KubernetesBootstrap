@@ -1,0 +1,56 @@
+---
+- name: Set same timezone on every Server
+  community.general.timezone:
+    name: "{{ system_timezone }}"
+  when: system_timezone is defined and system_timezone != "Your/Timezone"
+
+- name: Set inbound rules for cluster nodes
+  community.general.ufw:
+    rule: allow
+    src: "{{ item }}"
+  loop:
+    - "10.42.0.0/16"
+    - "10.0.17.0/16"
+    - "10.52.0.0/16"
+    - "10.43.0.0/16"
+
+- name: Allow traffic from private network
+  community.general.ufw:
+    rule: allow
+    src: "{{ item }}"
+  loop:
+    - "{{ cluster_cidr }}"
+    - "10.0.17.0/16"
+    - "{{ internal_network }}"
+    - "{{ internal_network_NAT }}"
+
+- name: Allow traffic on port 6443 for the host (kubectl)
+  community.general.ufw:
+    rule: allow
+    proto: tcp
+    src: "{{ host_ip }}"
+    to_port: "6443"
+
+- name: Set path to the distributions manifests (k3s)
+  set_fact:
+    manifest_path: /var/lib/rancher/k3s/server/manifests
+  when: distribution == "k3s"
+
+- name: Set path to the distributions manifests (k8s)
+  set_fact:
+    manifest_path: /etc/kubernetes/manifests
+  when: distribution == "k8s"
+
+- name: Create tmp folder for future manifests
+  file:
+    path: "/tmp/{{ distribution }}"
+    state: directory
+    owner: "{{ ansible_user }}"
+    mode: "0755"
+  run_once: true
+
+- name: Assign kubectl prefix for later executions
+  set_fact:
+    kubectl_prefix: "{{ 'k3s' if distribution == 'k3s' else ('k0s' if distribution == 'k0s' else ' ') }}"
+
+# Install cni interface for k8s

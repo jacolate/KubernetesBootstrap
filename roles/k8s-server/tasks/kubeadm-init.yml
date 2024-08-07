@@ -1,0 +1,99 @@
+---
+- name: Create the manifests directory on the first master
+  file:
+    path: "{{ manifest_path }}/"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+
+- name: Copy the kube-vip pod manifest to the first master
+  template:
+    src: "kube-vip-pod.j2"
+    dest: "{{ manifest_path }}/kube-vip-pod.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+
+- name: Create the tmp directory on the first master
+  file:
+    path: "/tmp/kubeadm-init-config"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"  
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+
+- name: Copy the init config to the first master
+  template:
+    src: "kubeadm-init.j2"
+    dest: "/tmp/kubeadm-init-config/kubeadm-init.yaml"
+    owner: root
+    group: root
+    mode: "0644"
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+
+- name: Run kubeadm init
+  command: >
+    kubeadm init
+    --upload-certs
+    --config /tmp/kubeadm-init-config/kubeadm-init.yaml
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+
+- name: Retrieve the control plane join command
+  command: bash -c "echo $(kubeadm token create --print-join-command) --control-plane --certificate-key $(kubeadm init phase upload-certs --upload-certs | grep -vw -e certificate -e Namespace)"
+  register: control_plane_join_command
+  changed_when: false
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+
+- name: Retrieve the worker join command
+  command: kubeadm token create --print-join-command
+  register: worker_join_command
+  changed_when: false
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+
+- name: Store the control plane join command
+  set_fact:
+    control_plane_join_command: "{{ control_plane_join_command.stdout }}"
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+
+- name: Store the worker join command
+  set_fact:
+    worker_join_command: "{{ worker_join_command.stdout }}"
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+
+
+- name: Ensure .kube directory exists
+  file:
+    path: /root/.kube
+    state: directory
+    mode: '0755'
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+
+- name: Copy admin.conf to /root/.kube/config
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: /root/.kube/config
+    mode: '0644'
+    remote_src: true
+    force: true
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+
+- name: Create directory .kube
+  file:
+    path: "{{ ansible_user_dir }}/.kube"
+    state: directory
+    owner: "{{ ansible_user_id }}"
+    mode: "u=rwx,g=rx,o="
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+
+- name: Copy config file to user home directory
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "{{ ansible_user_dir }}/.kube/config"
+    remote_src: true
+    owner: "{{ ansible_user_id }}"
+    mode: "u=rw,g=,o="
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']

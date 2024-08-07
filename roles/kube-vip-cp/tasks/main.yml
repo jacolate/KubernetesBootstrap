@@ -1,0 +1,12 @@
+---
+
+- name: Download kube-vip-cp
+  include_tasks: kube-vip-cp.yml
+
+- name: Deploy kube-vip-cp-pool
+  include_tasks: kube-vip-cp-pool.yml
+
+- name: Remove tmp directory used for manifests
+  file:
+    path: /tmp/kube-vip-cp
+    state: absent

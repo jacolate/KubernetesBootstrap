@@ -1,0 +1,11 @@
+---
+- name: Setup the first control plane nodes
+  include_tasks: kubeadm-init.yml
+
+- name: Join remaining master nodes to the cluster
+  include_tasks: kubeadm-join.yml
+
+- name: Remove tmp directory used for manifests
+  file:
+    path: /tmp/kubeadm-init-config
+    state: absent

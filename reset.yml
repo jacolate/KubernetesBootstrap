@@ -1,0 +1,12 @@
+---
+- name: Reset k3s cluster
+  hosts: cluster
+  gather_facts: yes
+  roles:
+    - role: reset
+      become: true
+  post_tasks:
+    - name: Reboot and wait for node to come back up
+      become: true
+      reboot:
+        reboot_timeout: 3600

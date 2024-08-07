@@ -1,0 +1,11 @@
+---
+- name: Download and deploy rook operator
+  include_tasks: rook-operator.yml
+
+- name: Create the ceph cluster
+  include_tasks: rook-ceph-cluster.yml
+
+- name: Remove tmp directory used for manifests
+  file:
+    path: /tmp/{{ distribution }}/rook
+    state: absent

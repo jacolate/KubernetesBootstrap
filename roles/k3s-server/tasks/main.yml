@@ -1,0 +1,83 @@
+---
+- name: Stop k3s-init
+  systemd:
+    name: k3s-init
+    state: stopped
+  failed_when: false
+
+- name: Clean previous runs of k3s-init  # noqa command-instead-of-module
+  # The systemd module does not support "reset-failed", so we need to resort to command.
+  command: systemctl reset-failed k3s-init
+  failed_when: false
+  changed_when: false
+
+- name: Start kube-vip initialization
+  include_role:
+    name: kube-vip
+
+- name: Init cluster inside the transient k3s-init service
+  command:
+    cmd: "systemd-run -p RestartSec=2 \
+                      -p Restart=on-failure \
+                      --unit=k3s-init \
+                      k3s server {{ server_init_args }}"
+    creates: "{{ systemd_dir }}/k3s.service"
+
+- name: Verification
+  when: not ansible_check_mode
+  block:
+    - name: Verify that all nodes actually joined (check k3s-init.service if this fails)
+      command:
+        cmd: k3s kubectl get nodes -l "node-role.kubernetes.io/master=true" -o=jsonpath="{.items[*].metadata.name}"
+      register: nodes
+      until: nodes.rc == 0 and (nodes.stdout.split() | length) == (groups[group_name_master | default('master')] | length)  # yamllint disable-line rule:line-length
+      retries: "{{ retry_count | default(20) }}"
+      delay: 10
+      changed_when: false
+  always:
+    - name: Kill the temporary service used for initialization
+      systemd:
+        name: k3s-init
+        state: stopped
+      failed_when: false
+
+- name: Copy K3s service file
+  register: k3s_service
+  template:
+    src: "k3s.service.j2"
+    dest: "{{ systemd_dir }}/k3s.service"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable and check K3s service
+  systemd:
+    name: k3s
+    daemon_reload: true
+    state: restarted
+    enabled: true
+
+- name: Create directory .kube
+  file:
+    path: "{{ ansible_user_dir }}/.kube"
+    state: directory
+    owner: "{{ ansible_user_id }}"
+    mode: "u=rwx,g=rx,o="
+
+- name: Copy config file to user home directory
+  copy:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: "{{ ansible_user_dir }}/.kube/config"
+    remote_src: true
+    owner: "{{ ansible_user_id }}"
+    mode: "u=rw,g=,o="
+
+- name: Configure kubectl cluster to {{ endpoint_url }}
+  command: >-
+    k3s kubectl config set-cluster default
+      --server={{ endpoint_url }}
+      --kubeconfig {{ ansible_user_dir }}/.kube/config
+  changed_when: true
+  vars:
+    endpoint_url: >-
+      https://{{ apiserver_endpoint | ansible.utils.ipwrap }}:6443

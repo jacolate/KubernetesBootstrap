@@ -1,0 +1,28 @@
+- name: Deploy Longhorn manifest
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+  run_once: true
+  block:
+    - name: Create manifests directory on first master
+      file:
+        path: "{{ manifest_path }}/"
+        state: directory
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: "Download to first master: manifest for longhorn"
+      ansible.builtin.get_url:
+        url: "https://raw.githubusercontent.com/longhorn/longhorn/v1.6.1/deploy/longhorn.yaml"
+        dest: "{{ manifest_path }}/longhorn-manifest.yml"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Wait for longhorn pods to be in Running state
+      command: >-
+        {{ kubectl_prefix }} kubectl wait --for=condition=ready pod -l app=longhorn-ui
+        --namespace=longhorn-system
+        --timeout={{ longhorn_available_timeout | default('300s') }}
+      changed_when: false
+      run_once: true
+      retries: 5

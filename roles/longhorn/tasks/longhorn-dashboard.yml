@@ -1,0 +1,27 @@
+- name: Deploy Longhorn manifest
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+  run_once: true
+  block:
+    - name: Generate hashed password using openssl
+      ansible.builtin.shell:
+        cmd: "echo '{{ longhorn_password }}' | openssl passwd -apr1 -stdin"
+      register: hashed_password
+      changed_when: false
+
+    - name: Create auth file for Longhorn
+      ansible.builtin.shell:
+        cmd: "echo '{{ longhorn_username }}:{{ hashed_password.stdout }}' | tee auth"
+      register: result_auth
+      changed_when: result_auth.stdout != ""
+
+    - name: Create secret for Longhorn
+      ansible.builtin.command:
+        cmd: "{{ kubectl_prefix }} kubectl -n longhorn-system create secret generic basic-auth --from-file=auth"
+      when: result_auth.changed
+
+    - name: Copy longhorn-ui ingressroute to first master
+      template:
+        src: "longhorn-ui.j2"
+        dest: "{{ manifest_path }}/longhorn-ui.yml"
+        owner: "{{ ansible_user_id }}"
+        mode: "0755"

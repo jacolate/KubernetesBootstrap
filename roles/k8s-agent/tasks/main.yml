@@ -1,0 +1,5 @@
+---
+- name: Join worker nodes to the cluster
+  command: "{{ hostvars[groups['master'][0]].worker_join_command }}"
+  register: join_result
+  changed_when: true

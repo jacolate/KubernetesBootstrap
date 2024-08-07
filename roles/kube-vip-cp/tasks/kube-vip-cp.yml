@@ -1,0 +1,20 @@
+---
+- name: Prepare kube-vip load balancer and deploy on first master
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+  run_once: true
+  block:
+  - name: Create manifests directory on first master
+    file:
+      path: "{{ manifest_path }}/"
+      state: directory
+      owner: root
+      group: root
+      mode: "0644"
+
+  - name: "Download to first master: manifest for kube-vip-cloud-provider"
+    ansible.builtin.get_url:
+      url: "https://raw.githubusercontent.com/kube-vip/kube-vip-cloud-provider/main/manifest/kube-vip-cloud-controller.yaml"
+      dest: "{{ manifest_path }}/kube-vip-cloud-controller.yaml"
+      owner: root
+      group: root
+      mode: "0644"

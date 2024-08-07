@@ -1,0 +1,22 @@
+---
+- name: Prepare metallb crds and deploy it on the first master
+  when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+  run_once: true
+  block:
+  - name: Create manifests directory on first master
+    file:
+      path: "{{ manifest_path }}/"
+      state: directory
+      owner: root
+      group: root
+      mode: "0644"
+    when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']
+
+  - name: "Download to first master: manifest for metallb-{{ metallb_type }}"
+    ansible.builtin.get_url:
+      url: "https://raw.githubusercontent.com/metallb/metallb/{{ metallb_controller_tag_version }}/config/manifests/metallb-{{ metallb_type }}.yaml"  # noqa yaml[line-length]
+      dest: "{{ manifest_path }}/metallb-crds.yml"
+      owner: root
+      group: root
+      mode: "0644"
+    when: ansible_hostname == hostvars[groups[group_name_master | default('master')][0]]['ansible_hostname']

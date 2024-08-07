@@ -1,0 +1,138 @@
+---
+
+- name: Download k3s binary x64
+  get_url:
+    url: https://github.com/k3s-io/k3s/releases/download/{{ k3s_version }}/k3s
+    checksum: sha256:https://github.com/k3s-io/k3s/releases/download/{{ k3s_version }}/sha256sum-amd64.txt
+    dest: /usr/local/bin/k3s
+    owner: root
+    group: root
+    mode: "0755"
+  when: ansible_facts.architecture == "x86_64" and distribution == "k3s"
+
+- name: Download k3s binary arm64
+  get_url:
+    url: https://github.com/k3s-io/k3s/releases/download/{{ k3s_version }}/k3s-arm64
+    checksum: sha256:https://github.com/k3s-io/k3s/releases/download/{{ k3s_version }}/sha256sum-arm64.txt
+    dest: /usr/local/bin/k3s
+    owner: root
+    group: root
+    mode: "0755"
+  when:
+    - distribution == "k3s" and
+      ( ansible_facts.architecture is search("arm") and
+        ansible_facts.userspace_bits == "64" ) or
+      ansible_facts.architecture is search("aarch64")
+
+- name: Download k3s binary armhf
+  get_url:
+    url: https://github.com/k3s-io/k3s/releases/download/{{ k3s_version }}/k3s-armhf
+    checksum: sha256:https://github.com/k3s-io/k3s/releases/download/{{ k3s_version }}/sha256sum-arm.txt
+    dest: /usr/local/bin/k3s
+    owner: root
+    group: root
+    mode: "0755"
+  when:
+    - distribution == "k3s"
+    - ansible_facts.architecture is search("arm")
+    - ansible_facts.userspace_bits == "32"
+
+- name: Download k0s binary x64
+  get_url:
+    url: https://github.com/k0sproject/k0s/releases/download/{{ k0s_version }}/k0s-{{ k0s_version }}-amd64
+    dest: /usr/local/bin/k0s
+    owner: root
+    group: root
+    mode: "0755"
+  when: distribution == "k0s" and ansible_facts.architecture == "x86_64"
+
+- name: Create config folder for k0s init
+  file:
+    path: /etc/k0s
+    state: directory
+    owner: "{{ ansible_user_id }}"
+    mode: "0755"
+  when: distribution == "k0s"
+
+- name: Copy k0s config to tmp folder
+  template:
+    src: "k0s-config.j2"
+    dest: "/etc/k0s/k0s-config.yml"
+    owner: "{{ ansible_user_id }}"
+    mode: "0755"
+  when: distribution == "k0s"
+
+- name: Install apt packages for K8s Install
+  apt:
+    name: "{{ item }}"
+    state: present
+    update_cache: true
+  loop:
+    - apt-transport-https
+    - containerd
+    - ca-certificates
+    - curl
+    - gpg
+  when: distribution == "k8s"
+
+- name: Create directory for Kubernetes apt keyring
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+  when: distribution == "k8s"
+
+- name: Add Kubernetes apt key
+  ansible.builtin.get_url:
+    url: https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key
+    dest: /etc/apt/keyrings/kubernetes-apt-keyring.asc
+    mode: "0644"
+  when: distribution == "k8s"
+
+- name: Add Kubernetes apt repository
+  ansible.builtin.apt_repository:
+    repo: 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.asc] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /'
+    state: present
+  when: distribution == "k8s"
+
+- name: Install packages kubelet, kubeadm, and kubectl
+  apt:
+    pkg:
+      - kubelet
+      - kubeadm
+      - kubectl
+    state: present
+  when: distribution == "k8s"
+
+- name: Disable swap
+  shell: |
+    swapoff -a
+  when: distribution == "k8s"
+
+- name: Disable swap in fstab
+  replace:
+    path: /etc/fstab
+    regexp: '^([^#].*?\sswap\s+sw\s+.*)$'
+    replace: '# \1'
+  when: distribution == "k8s"
+
+- name: Enable ip forwarding
+  lineinfile:
+    dest: /etc/ufw/sysctl.conf
+    regexp: '^#{{ item }}$'
+    line: "{{ item }}"
+  with_items:
+    - net/ipv4/ip_forward=1
+    - net/ipv6/conf/default/forwarding=1
+    - net/ipv6/conf/all/forwarding=1
+  when: distribution == "k8s"
+
+- name: Enable forwarding in ufw
+  lineinfile:
+    dest: /etc/default/ufw
+    regexp: '^DEFAULT_FORWARD_POLICY=.*$'
+    line: DEFAULT_FORWARD_POLICY="ACCEPT"
+  when: distribution == "k8s"
+
+- name: Reload ufw
+  shell: ufw reload

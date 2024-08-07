@@ -1,0 +1,6 @@
+---
+- name: Download and deploy longhorn
+  include_tasks: longhorn-crds.yml
+
+- name: Configure longhorn dashboard
+  include_tasks: longhorn-dashboard.yml
